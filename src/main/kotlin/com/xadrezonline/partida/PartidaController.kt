@@ -1,16 +1,17 @@
 package com.xadrezonline.partida
 
 import com.xadrezonline.partida.dto.MovimentoRequest
+import com.xadrezonline.partida.dto.RematchRequest
 import com.xadrezonline.usuario.UsuarioRepository
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import org.springframework.http.ResponseEntity
+import org.springframework.messaging.simp.SimpMessagingTemplate
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.security.core.userdetails.UserDetails
 import org.springframework.web.bind.annotation.*
-import org.springframework.messaging.simp.SimpMessagingTemplate
 import java.util.UUID
 
 @RestController
@@ -24,10 +25,12 @@ class PartidaController(
 ) {
     @PostMapping
     @Operation(summary = "Criar nova partida e obter link de convite")
-    fun criarPartida(@AuthenticationPrincipal userDetails: UserDetails) =
-        ResponseEntity.ok(
-            partidaService.criarPartida(resolverUsuario(userDetails))
-        )
+    fun criarPartida(
+        @AuthenticationPrincipal userDetails: UserDetails,
+        @RequestParam(defaultValue = "SEM_LIMITE") modoTempo: ModoTempo
+    ) = ResponseEntity.ok(
+        partidaService.criarPartida(resolverUsuario(userDetails), modoTempo)
+    )
 
     @GetMapping("/{id}")
     @Operation(summary = "Buscar informações de uma partida")
@@ -53,6 +56,22 @@ class PartidaController(
     ) = ResponseEntity.ok(
         partidaService.desistir(id, resolverUsuario(userDetails))
     )
+
+    @PostMapping("/{id}/revanche")
+    @Operation(summary = "Solicitar revanche ao mesmo adversário com cores invertidas")
+    fun solicitarRevanche(
+        @PathVariable id: UUID,
+        @AuthenticationPrincipal userDetails: UserDetails
+    ): ResponseEntity<com.xadrezonline.partida.dto.EstadoPartidaResponse> {
+        val (novaPartidaId, estado) = partidaService.solicitarRevanche(id, resolverUsuario(userDetails))
+
+        // Broadcast na sala antiga para redirecionar os dois jogadores
+        messagingTemplate.convertAndSend(
+            "/topic/partida/$id/revanche",
+            mapOf("novaPartidaId" to novaPartidaId)
+        )
+        return ResponseEntity.ok(estado)
+    }
 
     @GetMapping("/historico")
     @Operation(summary = "Listar histórico de partidas do usuário autenticado")

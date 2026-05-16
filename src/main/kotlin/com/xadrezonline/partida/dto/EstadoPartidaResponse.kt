@@ -1,5 +1,6 @@
 package com.xadrezonline.partida.dto
 
+import com.xadrezonline.partida.ModoTempo
 import com.xadrezonline.partida.StatusPartida
 import java.util.UUID
 
@@ -12,7 +13,12 @@ data class EstadoPartidaResponse(
     val xeque: Boolean,
     val xequeMate: Boolean,
     val afogamento: Boolean,
-    val ultimoMovimento: String?
+    val ultimoMovimento: String?,
+    /** Tempo restante em ms para cada jogador (-1 = sem limite). */
+    val tempoBrancasMs: Long = -1L,
+    val tempoNegrasMs: Long = -1L,
+    /** Motivo do encerramento da partida: XEQUE_MATE, AFOGAMENTO, DESISTENCIA, TIMEOUT */
+    val motivoFim: String? = null
 )
 
 data class PartidaInfoResponse(
@@ -21,5 +27,6 @@ data class PartidaInfoResponse(
     val jogadorNegrasEmail: String?,
     val status: StatusPartida,
     val fen: String,
-    val vencedorEmail: String?
+    val vencedorEmail: String?,
+    val modoTempo: ModoTempo = ModoTempo.SEM_LIMITE
 )

@@ -20,7 +20,8 @@ import java.util.UUID
 class PartidaService(
     private val partidaRepository: PartidaRepository,
     private val usuarioRepository: UsuarioRepository,
-    private val movimentoRepository: MovimentoRepository
+    private val movimentoRepository: MovimentoRepository,
+    private val relogioService: RelogioService
 ) {
     @Value("\${app.base-url:http://localhost:3001/#/}")
     private lateinit var baseUrl: String
@@ -28,13 +29,17 @@ class PartidaService(
     // ── Criar nova partida ────────────────────────────────────────────────────
 
     @Transactional
-    fun criarPartida(jogador: Usuario): CriarPartidaResponse {
-        val partida = Partida(jogadorBrancas = jogador)
+    fun criarPartida(jogador: Usuario, modoTempo: ModoTempo = ModoTempo.SEM_LIMITE): CriarPartidaResponse {
+        val partida = Partida(
+            jogadorBrancas = jogador,
+            modoTempo = modoTempo
+        )
         partidaRepository.save(partida)
         return CriarPartidaResponse(
             id = partida.id,
             linkConvite = "${baseUrl}partida/${partida.id}",
-            jogadorBrancasEmail = jogador.email
+            jogadorBrancasEmail = jogador.email,
+            modoTempo = modoTempo
         )
     }
 
@@ -53,6 +58,10 @@ class PartidaService(
 
         partida.jogadorNegras = jogador
         partida.status = StatusPartida.EM_ANDAMENTO
+
+        // Inicia o relógio quando ambos os jogadores estão presentes
+        relogioService.iniciarRelogio(partida)
+
         partidaRepository.save(partida)
 
         return construirEstado(partida, null)
@@ -88,6 +97,9 @@ class PartidaService(
             throw IllegalArgumentException("Não é sua vez")
         }
 
+        // Descontar o tempo do jogador que está movendo
+        relogioService.registrarMovimento(partida, jogador)
+
         // Construir o movimento
         val from = Square.valueOf(request.from.uppercase())
         val to = Square.valueOf(request.to.uppercase())
@@ -117,16 +129,22 @@ class PartidaService(
 
         partida.fenAtual = novoFen
 
-        if (xequeMate) {
-            partida.status = StatusPartida.FINALIZADA
-            partida.vencedor = jogador
-        } else if (afogamento) {
-            partida.status = StatusPartida.FINALIZADA
+        val motivoFim: String? = when {
+            xequeMate -> {
+                partida.status = StatusPartida.FINALIZADA
+                partida.vencedor = jogador
+                "XEQUE_MATE"
+            }
+            afogamento -> {
+                partida.status = StatusPartida.FINALIZADA
+                "AFOGAMENTO"
+            }
+            else -> null
         }
 
         partidaRepository.save(partida)
 
-        return construirEstado(partida, notacao, xeque, xequeMate, afogamento)
+        return construirEstado(partida, notacao, xeque, xequeMate, afogamento, motivoFim)
     }
 
     // ── Desistência ───────────────────────────────────────────────────────────
@@ -147,7 +165,46 @@ class PartidaService(
         }
         partidaRepository.save(partida)
 
-        return construirEstado(partida, null)
+        return construirEstado(partida, null, motivoFim = "DESISTENCIA")
+    }
+
+    // ── Revanche ──────────────────────────────────────────────────────────────
+
+    /**
+     * Cria uma nova partida com as cores invertidas entre os mesmos jogadores.
+     * O ex-jogador de negras torna-se o criador (brancas) da nova partida.
+     *
+     * @return Par de (novaPartidaId, EstadoPartidaResponse) para broadcast imediato.
+     */
+    @Transactional
+    fun solicitarRevanche(partidaOrigemId: UUID, solicitante: Usuario): Pair<UUID, EstadoPartidaResponse> {
+        val origem = buscarPartida(partidaOrigemId)
+
+        if (origem.status != StatusPartida.FINALIZADA) {
+            throw IllegalStateException("A revanche só pode ser solicitada após o término da partida")
+        }
+
+        val adversario = when (solicitante.id) {
+            origem.jogadorBrancas.id -> origem.jogadorNegras
+                ?: throw IllegalStateException("Partida não tinha adversário")
+            origem.jogadorNegras?.id -> origem.jogadorBrancas
+            else -> throw IllegalArgumentException("Você não é um jogador desta partida")
+        }
+
+        // Inverte as cores: quem era negras vira brancas
+        val novasBrancas = adversario
+        val novasNegras = solicitante
+
+        val novaPartida = Partida(
+            jogadorBrancas = novasBrancas,
+            jogadorNegras = novasNegras,
+            status = StatusPartida.EM_ANDAMENTO,
+            modoTempo = origem.modoTempo
+        )
+        relogioService.iniciarRelogio(novaPartida)
+        partidaRepository.save(novaPartida)
+
+        return Pair(novaPartida.id, construirEstado(novaPartida, null))
     }
 
     // ── Buscar partida por ID ─────────────────────────────────────────────────
@@ -160,7 +217,8 @@ class PartidaService(
             jogadorNegrasEmail = p.jogadorNegras?.email,
             status = p.status,
             fen = p.fenAtual,
-            vencedorEmail = p.vencedor?.email
+            vencedorEmail = p.vencedor?.email,
+            modoTempo = p.modoTempo
         )
     }
 
@@ -174,7 +232,8 @@ class PartidaService(
                 jogadorNegrasEmail = p.jogadorNegras?.email,
                 status = p.status,
                 fen = p.fenAtual,
-                vencedorEmail = p.vencedor?.email
+                vencedorEmail = p.vencedor?.email,
+                modoTempo = p.modoTempo
             )
         }
 
@@ -200,10 +259,12 @@ class PartidaService(
         ultimoMovimento: String?,
         xeque: Boolean = false,
         xequeMate: Boolean = false,
-        afogamento: Boolean = false
+        afogamento: Boolean = false,
+        motivoFim: String? = null
     ): EstadoPartidaResponse {
         val board = Board()
         board.loadFromFen(partida.fenAtual)
+        val (brancasMs, negrasMs) = relogioService.calcularTemposAtuais(partida)
         return EstadoPartidaResponse(
             partidaId = partida.id,
             fen = partida.fenAtual,
@@ -213,7 +274,10 @@ class PartidaService(
             xeque = xeque,
             xequeMate = xequeMate,
             afogamento = afogamento,
-            ultimoMovimento = ultimoMovimento
+            ultimoMovimento = ultimoMovimento,
+            tempoBrancasMs = brancasMs,
+            tempoNegrasMs = negrasMs,
+            motivoFim = motivoFim
         )
     }
 }
