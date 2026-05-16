@@ -10,6 +10,7 @@ import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.security.core.userdetails.UserDetails
 import org.springframework.web.bind.annotation.*
+import org.springframework.messaging.simp.SimpMessagingTemplate
 import java.util.UUID
 
 @RestController
@@ -18,7 +19,8 @@ import java.util.UUID
 @SecurityRequirement(name = "bearerAuth")
 class PartidaController(
     private val partidaService: PartidaService,
-    private val usuarioRepository: UsuarioRepository
+    private val usuarioRepository: UsuarioRepository,
+    private val messagingTemplate: SimpMessagingTemplate
 ) {
     @PostMapping
     @Operation(summary = "Criar nova partida e obter link de convite")
@@ -37,9 +39,11 @@ class PartidaController(
     fun entrarNaPartida(
         @PathVariable id: UUID,
         @AuthenticationPrincipal userDetails: UserDetails
-    ) = ResponseEntity.ok(
-        partidaService.entrarNaPartida(id, resolverUsuario(userDetails))
-    )
+    ): ResponseEntity<com.xadrezonline.partida.dto.EstadoPartidaResponse> {
+        val estado = partidaService.entrarNaPartida(id, resolverUsuario(userDetails))
+        messagingTemplate.convertAndSend("/topic/partida/$id/estado", estado)
+        return ResponseEntity.ok(estado)
+    }
 
     @PostMapping("/{id}/desistir")
     @Operation(summary = "Desistir da partida atual")

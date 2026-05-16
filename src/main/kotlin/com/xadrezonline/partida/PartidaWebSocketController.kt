@@ -28,10 +28,10 @@ class PartidaWebSocketController(
     fun processarMovimento(
         @DestinationVariable id: String,
         @Valid request: MovimentoRequest,
-        @AuthenticationPrincipal userDetails: UserDetails
+        principal: java.security.Principal
     ) {
         try {
-            val jogador = usuarioRepository.findByEmail(userDetails.username)
+            val jogador = usuarioRepository.findByEmail(principal.name)
                 .orElseThrow { NoSuchElementException("Usuário não encontrado") }
 
             val estado = partidaService.processarMovimento(
@@ -46,7 +46,7 @@ class PartidaWebSocketController(
         } catch (e: Exception) {
             // Erro privado apenas para o jogador que tentou o movimento
             messagingTemplate.convertAndSendToUser(
-                userDetails.username,
+                principal.name,
                 "/queue/errors",
                 mapOf("erro" to (e.message ?: "Erro ao processar movimento"))
             )
@@ -60,10 +60,10 @@ class PartidaWebSocketController(
     @MessageMapping("/partida/{id}/desistir")
     fun processarDesistencia(
         @DestinationVariable id: String,
-        @AuthenticationPrincipal userDetails: UserDetails
+        principal: java.security.Principal
     ) {
         try {
-            val jogador = usuarioRepository.findByEmail(userDetails.username)
+            val jogador = usuarioRepository.findByEmail(principal.name)
                 .orElseThrow()
 
             val estado = partidaService.desistir(UUID.fromString(id), jogador)
@@ -71,7 +71,7 @@ class PartidaWebSocketController(
 
         } catch (e: Exception) {
             messagingTemplate.convertAndSendToUser(
-                userDetails.username,
+                principal.name,
                 "/queue/errors",
                 mapOf("erro" to (e.message ?: "Erro ao processar desistência"))
             )
