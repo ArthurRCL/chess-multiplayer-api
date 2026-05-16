@@ -22,7 +22,7 @@ class PartidaService(
     private val usuarioRepository: UsuarioRepository,
     private val movimentoRepository: MovimentoRepository
 ) {
-    @Value("\${app.base-url:xadrezapp://}")
+    @Value("\${app.base-url:http://localhost:3001/#/}")
     private lateinit var baseUrl: String
 
     // ── Criar nova partida ────────────────────────────────────────────────────
