@@ -67,6 +67,25 @@ class PartidaService(
         return construirEstado(partida, null)
     }
 
+    // ── Modo Solo: o mesmo usuário entra como os dois lados (apenas para testes) ──
+
+    @Transactional
+    fun entrarModoSolo(partidaId: UUID, jogador: Usuario): EstadoPartidaResponse {
+        val partida = buscarPartida(partidaId)
+
+        if (partida.status != StatusPartida.AGUARDANDO) {
+            throw IllegalStateException("A partida não está mais aguardando jogadores")
+        }
+        // Permite que o criador entre como jogador de negras também (modo solo/teste)
+        partida.jogadorNegras = jogador
+        partida.status = StatusPartida.EM_ANDAMENTO
+
+        relogioService.iniciarRelogio(partida)
+        partidaRepository.save(partida)
+
+        return construirEstado(partida, null)
+    }
+
     // ── Processar movimento ───────────────────────────────────────────────────
 
     @Transactional
@@ -87,13 +106,15 @@ class PartidaService(
         // Verificar se é a vez do jogador
         val isBrancas = partida.jogadorBrancas.id == jogador.id
         val isNegras = partida.jogadorNegras?.id == jogador.id
+        val ehModoSolo = isBrancas && isNegras // mesmo usuário dos dois lados
 
         if (!isBrancas && !isNegras) {
             throw IllegalArgumentException("Você não é um jogador desta partida")
         }
 
         val vezAtualEhBrancas = board.sideToMove == Side.WHITE
-        if ((isBrancas && !vezAtualEhBrancas) || (isNegras && vezAtualEhBrancas)) {
+        // No modo solo o mesmo usuário controla os dois lados, então a verificação de vez é ignorada
+        if (!ehModoSolo && ((isBrancas && !vezAtualEhBrancas) || (isNegras && vezAtualEhBrancas))) {
             throw IllegalArgumentException("Não é sua vez")
         }
 
