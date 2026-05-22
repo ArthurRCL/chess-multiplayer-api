@@ -8,7 +8,7 @@ $envFile   = Join-Path $scriptDir ".env"
 
 # 1. Carregar variáveis do .env ─────────────────────────────
 if (Test-Path $envFile) {
-    Write-Host "📄 Carregando variáveis de $envFile..." -ForegroundColor Cyan
+    Write-Host "Carregando variaveis de $envFile..." -ForegroundColor Cyan
     Get-Content $envFile | ForEach-Object {
         $line = $_.Trim()
         if ($line -and -not $line.StartsWith('#')) {
@@ -17,27 +17,31 @@ if (Test-Path $envFile) {
                 $key   = $parts[0].Trim()
                 $value = $parts[1].Trim()
                 [System.Environment]::SetEnvironmentVariable($key, $value, 'Process')
-                Write-Host "  ✔ $key" -ForegroundColor DarkGray
+                Write-Host "  OK: $key" -ForegroundColor DarkGray
             }
         }
     }
 } else {
-    Write-Warning "Arquivo .env não encontrado em $envFile. Usando valores padrão do application.yml."
+    Write-Warning "Arquivo .env nao encontrado em $envFile. Usando valores padrao do application.yml."
 }
 
-# 2. Verificar se Java está disponível ─────────────────────
+# 2. Verificar se Java esta disponivel ─────────────────────
 if (-not (Get-Command java -ErrorAction SilentlyContinue)) {
-    Write-Error "❌ Java não encontrado. Instale o JDK 17+ e adicione ao PATH."
+    Write-Error "Java nao encontrado. Instale o JDK 17+ e adicione ao PATH."
     exit 1
 }
 $javaVersion = (java -version 2>&1 | Select-String 'version "(.+)"').Matches[0].Groups[1].Value
-Write-Host "☕ Java detectado: $javaVersion" -ForegroundColor Green
+Write-Host "Java detectado: $javaVersion" -ForegroundColor Green
 
-# 3. Rodar o Spring Boot via Gradle ────────────────────────
+# 3. Determinar a porta (sem o operador ??, incompativel com PS < 7) ───────
+$porta = $env:PORT
+if (-not $porta) { $porta = '8080' }
+
+# 4. Rodar o Spring Boot via Gradle ────────────────────────
 Write-Host ""
-Write-Host "🚀 Iniciando backend na porta $($env:PORT ?? '8080')..." -ForegroundColor Yellow
-Write-Host "   API disponível em: http://localhost:$($env:PORT ?? '8080')" -ForegroundColor Cyan
-Write-Host "   Swagger UI:        http://localhost:$($env:PORT ?? '8080')/swagger-ui.html" -ForegroundColor Cyan
+Write-Host "Iniciando backend na porta $porta..." -ForegroundColor Yellow
+Write-Host "   API:     http://localhost:$porta" -ForegroundColor Cyan
+Write-Host "   Swagger: http://localhost:$porta/swagger-ui.html" -ForegroundColor Cyan
 Write-Host ""
 
 Set-Location $scriptDir
