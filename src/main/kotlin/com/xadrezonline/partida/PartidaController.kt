@@ -48,6 +48,17 @@ class PartidaController(
         return ResponseEntity.ok(estado)
     }
 
+    @PostMapping("/{id}/solo")
+    @Operation(summary = "Entrar na própria partida como os dois lados (modo solo/teste)")
+    fun entrarModoSolo(
+        @PathVariable id: UUID,
+        @AuthenticationPrincipal userDetails: UserDetails
+    ): ResponseEntity<com.xadrezonline.partida.dto.EstadoPartidaResponse> {
+        val estado = partidaService.entrarModoSolo(id, resolverUsuario(userDetails))
+        messagingTemplate.convertAndSend("/topic/partida/$id/estado", estado)
+        return ResponseEntity.ok(estado)
+    }
+
     @PostMapping("/{id}/desistir")
     @Operation(summary = "Desistir da partida atual")
     fun desistir(
