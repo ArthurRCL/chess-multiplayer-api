@@ -1,6 +1,7 @@
 .env
 .gradle/
 build/
+bin/
 *.class
 *.jar
 *.war
