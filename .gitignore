@@ -7,3 +7,4 @@ bin/
 *.war
 *.log
 *.zip
+run-backend.ps1
