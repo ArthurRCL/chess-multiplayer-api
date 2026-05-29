@@ -1,0 +1,33 @@
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: chess_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: xadrez_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: chess_backend
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: jdbc:postgresql://db:5432/xadrez_db
+      DB_USER: postgres
+      DB_PASS: postgres
+      PORT: 8080
+      JWT_SECRET: ${JWT_SECRET:-xadrez-super-secret-key-must-be-at-least-256-bits-long-for-hs256}
+    depends_on:
+      - db
+    restart: unless-stopped
+
+volumes:
+  pgdata:
